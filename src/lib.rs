@@ -378,15 +378,17 @@
 //! still be run in parallel.
 //!
 
+extern crate colored;
+extern crate difference;
 extern crate http_muncher;
+#[macro_use]
+extern crate lazy_static;
 extern crate rand;
 extern crate regex;
-#[macro_use] extern crate lazy_static;
 extern crate serde_json;
-extern crate difference;
-extern crate colored;
 
-#[macro_use] mod logger;
+#[macro_use]
+mod logger;
 mod server;
 mod request;
 mod response;
@@ -403,7 +405,7 @@ use std::ops::Drop;
 use std::fmt;
 use rand::{thread_rng, Rng};
 use regex::Regex;
-use std::sync::{Mutex, LockResult, MutexGuard};
+use std::sync::{LockResult, Mutex, MutexGuard};
 use std::cell::RefCell;
 
 lazy_static! {
@@ -476,7 +478,7 @@ pub enum Matcher {
     /// Matches a path or header value by a regular expression.
     Regex(String),
     /// Matches a specified JSON body
-    #[deprecated(since="0.11.1", note="Please use `Matcher::Json` instead")]
+    #[deprecated(since = "0.11.1", note = "Please use `Matcher::Json` instead")]
     JSON(serde_json::Value),
     /// Matches a specified JSON body from a `serde_json::Value`
     Json(serde_json::Value),
@@ -497,21 +499,21 @@ impl<'a> From<&'a str> for Matcher {
 impl PartialEq<String> for Matcher {
     fn eq(&self, other: &String) -> bool {
         match self {
-            &Matcher::Exact(ref value) => { value == other },
-            &Matcher::Regex(ref regex) => { Regex::new(regex).unwrap().is_match(other) },
+            &Matcher::Exact(ref value) => value == other,
+            &Matcher::Regex(ref regex) => Regex::new(regex).unwrap().is_match(other),
             &Matcher::JSON(ref json_obj) => {
                 let other: serde_json::Value = serde_json::from_str(other).unwrap();
                 *json_obj == other
-            },
+            }
             &Matcher::Json(ref json_obj) => {
                 let other: serde_json::Value = serde_json::from_str(other).unwrap();
                 *json_obj == other
-            },
+            }
             &Matcher::JsonString(ref value) => {
                 let value: serde_json::Value = serde_json::from_str(value).unwrap();
                 let other: serde_json::Value = serde_json::from_str(other).unwrap();
                 value == other
-            },
+            }
             &Matcher::Any => true,
             &Matcher::Missing => false,
         }
@@ -575,7 +577,8 @@ impl Mock {
     /// ```
     ///
     pub fn match_header<M: Into<Matcher>>(mut self, field: &str, value: M) -> Self {
-        self.headers.push((field.to_owned().to_lowercase(), value.into()));
+        self.headers
+            .push((field.to_owned().to_lowercase(), value.into()));
 
         self
     }
@@ -630,7 +633,9 @@ impl Mock {
     /// ```
     ///
     pub fn with_header(mut self, field: &str, value: &str) -> Self {
-        self.response.headers.push((field.to_owned(), value.to_owned()));
+        self.response
+            .headers
+            .push((field.to_owned(), value.to_owned()));
 
         self
     }
@@ -700,10 +705,16 @@ impl Mock {
             if let Some(remote_mock) = state.mocks.iter().find(|mock| mock.id == self.id) {
                 opt_hits = Some(remote_mock.hits);
 
-                let mut message = format!("\n> Expected {} request(s) to:\n{}\n...but received {}\n\n", self.expected_hits, self, remote_mock.hits);
+                let mut message = format!(
+                    "\n> Expected {} request(s) to:\n{}\n...but received {}\n\n",
+                    self.expected_hits, self, remote_mock.hits
+                );
 
                 if let Some(last_request) = state.unmatched_requests.last() {
-                    message.push_str(&format!("> The last unmatched request was:\n{}\n", last_request));
+                    message.push_str(&format!(
+                        "> The last unmatched request was:\n{}\n",
+                        last_request
+                    ));
 
                     let difference = diff::compare(&self.to_string(), &last_request.to_string());
                     message.push_str(&format!("> Difference:\n{}\n", difference));
@@ -715,6 +726,46 @@ impl Mock {
 
         match (opt_hits, opt_message) {
             (Some(hits), Some(message)) => assert_eq!(self.expected_hits, hits, "{}", message),
+            _ => panic!("Could not retrieve enough information about the remote mock."),
+        }
+    }
+
+    //
+    // Asserts that the expected amount of requests (defaults to 1 requests)
+    // were *not* performed.
+    //
+    pub fn refute(&self) {
+        let mut opt_hits = None;
+        let mut opt_message = None;
+
+        {
+            let state_mutex = server::STATE.clone();
+            let state = state_mutex.lock().unwrap();
+
+            if let Some(remote_mock) = state.mocks.iter().find(|mock| mock.id == self.id) {
+                opt_hits = Some(remote_mock.hits);
+
+                let mut message = format!(
+                    "\n> Expected {} request(s) to:\n{}\n...but received {}\n\n",
+                    self.expected_hits, self, remote_mock.hits
+                );
+
+                if let Some(last_request) = state.unmatched_requests.last() {
+                    message.push_str(&format!(
+                        "> The last unmatched request was:\n{}\n",
+                        last_request
+                    ));
+
+                    let difference = diff::compare(&self.to_string(), &last_request.to_string());
+                    message.push_str(&format!("> Difference:\n{}\n", difference));
+                }
+
+                opt_message = Some(message);
+            }
+        }
+
+        match (opt_hits, opt_message) {
+            (Some(hits), Some(message)) => assert_eq!(0, hits, "{}", message),
             _ => panic!("Could not retrieve enough information about the remote mock."),
         }
     }
@@ -780,23 +831,23 @@ impl fmt::Display for Mock {
             Matcher::Exact(ref value) => {
                 formatted.push_str(value);
                 formatted.push_str("\r\n");
-            },
+            }
             Matcher::Regex(ref value) => {
                 formatted.push_str(value);
                 formatted.push_str(" (regex)\r\n")
-            },
+            }
             Matcher::JSON(ref json_obj) => {
                 formatted.push_str(&json_obj.to_string());
                 formatted.push_str(" (json)\r\n")
-            },
+            }
             Matcher::Json(ref json_obj) => {
                 formatted.push_str(&json_obj.to_string());
                 formatted.push_str(" (json)\r\n")
-            },
+            }
             Matcher::JsonString(ref value) => {
                 formatted.push_str(value);
                 formatted.push_str(" (json)\r\n")
-            },
+            }
             Matcher::Any => formatted.push_str("(any)\r\n"),
             Matcher::Missing => formatted.push_str("(missing)\r\n"),
         }
@@ -807,41 +858,41 @@ impl fmt::Display for Mock {
                     formatted.push_str(key);
                     formatted.push_str(": ");
                     formatted.push_str(value);
-                },
+                }
                 &Matcher::Regex(ref value) => {
                     formatted.push_str(key);
                     formatted.push_str(": ");
                     formatted.push_str(value);
                     formatted.push_str(" (regex)")
-                },
+                }
                 &Matcher::JSON(ref json_obj) => {
                     formatted.push_str(key);
                     formatted.push_str(": ");
                     formatted.push_str(&json_obj.to_string());
                     formatted.push_str(" (json)")
-                },
+                }
                 &Matcher::Json(ref json_obj) => {
                     formatted.push_str(key);
                     formatted.push_str(": ");
                     formatted.push_str(&json_obj.to_string());
                     formatted.push_str(" (json)")
-                },
+                }
                 &Matcher::JsonString(ref value) => {
                     formatted.push_str(key);
                     formatted.push_str(": ");
                     formatted.push_str(value);
                     formatted.push_str(" (json)")
-                },
+                }
                 &Matcher::Any => {
                     formatted.push_str(key);
                     formatted.push_str(": ");
                     formatted.push_str("(any)");
-                },
+                }
                 &Matcher::Missing => {
                     formatted.push_str(key);
                     formatted.push_str(": ");
                     formatted.push_str("(missing)");
-                },
+                }
             }
 
             formatted.push_str("\r\n");
@@ -851,25 +902,25 @@ impl fmt::Display for Mock {
             Matcher::Exact(ref value) => {
                 formatted.push_str(value);
                 formatted.push_str("\r\n");
-            },
+            }
             Matcher::Regex(ref value) => {
                 formatted.push_str(value);
                 formatted.push_str("\r\n");
-            },
+            }
             Matcher::JSON(ref json_obj) => {
                 formatted.push_str(&json_obj.to_string());
                 formatted.push_str("\r\n")
-            },
+            }
             Matcher::Json(ref json_obj) => {
                 formatted.push_str(&json_obj.to_string());
                 formatted.push_str("\r\n")
-            },
+            }
             Matcher::JsonString(ref value) => {
                 formatted.push_str(value);
                 formatted.push_str("\r\n")
-            },
+            }
             Matcher::Missing => formatted.push_str("(missing)\r\n"),
-            _ => {},
+            _ => {}
         }
 
         write!(f, "{}", formatted)
