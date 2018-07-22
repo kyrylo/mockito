@@ -747,7 +747,7 @@ impl Mock {
 
                 let mut message = format!(
                     "\n> Expected {} request(s) to:\n{}\n...but received {}\n\n",
-                    self.expected_hits, self, remote_mock.hits
+                    0, self, remote_mock.hits
                 );
 
                 if let Some(last_request) = state.unmatched_requests.last() {
